@@ -359,6 +359,10 @@ impl Decoder<Option<StdString>> for String {
         match Int16.decode(buf)? {
             -1 => Ok(None),
             n if n >= 0 => {
+                // netget: refuse a declared length the buffer cannot hold before zero-filling it.
+                if n as usize > buf.remaining() {
+                    return Err(crate::protocol::buf::NotEnoughBytesError.into());
+                }
                 let mut strbuf = vec![0; n as usize];
                 ByteBuf::try_copy_to_slice(buf, &mut strbuf)?;
                 Ok(Some(std::string::String::from_utf8(strbuf)?))
@@ -511,6 +515,10 @@ impl Decoder<Option<StdString>> for CompactString {
         match UnsignedVarInt.decode(buf)? {
             0 => Ok(None),
             n => {
+                // netget: a u32 length could zero-fill 4 GiB before the copy found nothing there.
+                if (n - 1) as usize > buf.remaining() {
+                    return Err(crate::protocol::buf::NotEnoughBytesError.into());
+                }
                 let mut strbuf = vec![0; (n - 1) as usize];
                 ByteBuf::try_copy_to_slice(buf, &mut strbuf)?;
                 Ok(Some(std::string::String::from_utf8(strbuf)?))
@@ -655,6 +663,10 @@ impl Decoder<Option<Vec<u8>>> for Bytes {
         match Int32.decode(buf)? {
             -1 => Ok(None),
             n if n >= 0 => {
+                // netget: an i32 length could zero-fill 2 GiB before the copy found nothing there.
+                if n as usize > buf.remaining() {
+                    return Err(crate::protocol::buf::NotEnoughBytesError.into());
+                }
                 let mut data = vec![0; n as usize];
                 ByteBuf::try_copy_to_slice(buf, &mut data)?;
                 Ok(Some(data))
@@ -804,6 +816,10 @@ impl Decoder<Option<Vec<u8>>> for CompactBytes {
         match UnsignedVarInt.decode(buf)? {
             0 => Ok(None),
             n => {
+                // netget: a u32 length could zero-fill 4 GiB before the copy found nothing there.
+                if (n - 1) as usize > buf.remaining() {
+                    return Err(crate::protocol::buf::NotEnoughBytesError.into());
+                }
                 let mut data = vec![0; (n - 1) as usize];
                 ByteBuf::try_copy_to_slice(buf, &mut data)?;
                 Ok(Some(data))
@@ -985,7 +1001,12 @@ impl<T, E: Decoder<T>> Decoder<Option<Vec<T>>> for Array<E> {
         match Int32.decode(buf)? {
             -1 => Ok(None),
             n if n >= 0 => {
-                let mut result = Vec::with_capacity(n as usize);
+                // NetGet patch (vendor/kafka-protocol/README.netget.md): the count is
+                // peer-supplied and every element costs at least one byte, so the bytes
+                // left in the buffer bound the pre-allocation. Unpatched, a request
+                // declaring 0x7fffffff topics asked for ~144 GiB up front and aborted
+                // the process before the first (absent) element was read.
+                let mut result = Vec::with_capacity((n as usize).min(buf.remaining()));
                 for _ in 0..n {
                     result.push(self.0.decode(buf)?);
                 }
@@ -1093,7 +1114,8 @@ impl<T, E: Decoder<T>> Decoder<Option<Vec<T>>> for CompactArray<E> {
         match UnsignedVarInt.decode(buf)? {
             0 => Ok(None),
             n => {
-                let mut result = Vec::with_capacity((n - 1) as usize);
+                // NetGet patch (vendor/kafka-protocol/README.netget.md): see `Array` above.
+                let mut result = Vec::with_capacity(((n - 1) as usize).min(buf.remaining()));
                 for _ in 1..n {
                     result.push(self.0.decode(buf)?);
                 }

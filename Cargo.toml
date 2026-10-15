@@ -2,7 +2,7 @@
 members = ["protocol_codegen"]
 
 [package]
-name = "kafka-protocol"
+name = "netget-kafka-protocol"
 version = "0.14.1"
 authors = [
     "Diggory Blake <diggsey@googlemail.com>",
@@ -11,9 +11,9 @@ authors = [
 ]
 edition = "2021"
 license = "MIT/Apache-2.0"
-description = "Implementation of Kafka wire protocol."
+description = "NetGet fork of kafka-protocol: decode allocations bounded by the bytes present. Implementation of Kafka wire protocol."
 homepage = "https://github.com/tychedelia/kafka-protocol-rs"
-repository = "https://github.com/tychedelia/kafka-protocol-rs"
+repository = "https://github.com/netget-net/kafka-protocol-rs"
 documentation = "https://docs.rs/kafka-protocol"
 readme = "README.md"
 keywords = ["kafka"]
@@ -60,3 +60,6 @@ testcontainers = { version = "0.20.1", features = ["blocking", "watchdog"] }
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[lib]
+name = "kafka_protocol"
